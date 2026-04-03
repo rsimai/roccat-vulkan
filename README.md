@@ -4,13 +4,19 @@ A small tool for writing RGB values to a ROCCAT Vulkan Pro TKL keyboard and read
 
 ## What "read" means here
 
-The keyboard LED protocol used here is write-focused, I couldn't figure out how to read from the device. `get` reads the value from this tool's tracked state file (`.roccat-vulkan-rgb-state.json`) in user's $HOME directory, if not specified otherwise.
+The keyboard LED protocol used here is write-focused, I couldn't figure out how to read from the device. `get` reads the value from this tool's tracked state file (`.roccat-vulkan-rgb-state.toml`) in user's $HOME directory, if not specified otherwise.
 
 That means:
 - `set` updates the key(s) in the state file and writes a (full) frame to the device
 - `get` returns the tracked value for the key(s) from the state file, not from the device
 
 If another process or onboard effect changes lighting, `get` will not reflect those external changes.
+
+The state file (`.roccat-vulkan-rgb-state.toml`) uses the same TOML template format as user-defined templates, so it can be re-pushed to the device at login or after a USB reconnect:
+
+```bash
+roccat-vulkan-rgb apply
+```
 
 ## Setup (one-time, no root required after this)
 
@@ -19,10 +25,11 @@ Install the bundled udev rule so Linux grants the physically-logged-in user acce
 ```bash
 sudo cp 99-roccat-vulkan-pro-tkl.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
-sudo udevadm trigger --action=add /dev/hidraw*
 ```
 
-No group membership changes are needed. The rule uses the systemd `uaccess` tag, which dynamically grants access only to the user at the local physical seat (seat0). Users connected via SSH or other non-seat sessions are not granted access. The ACL is removed automatically when the local user logs out.
+Then unplug and replug the keyboard. No `sudo` is needed from this point on, including after every subsequent replug. No group membership changes are needed.
+
+The rule uses the systemd `uaccess` tag, which grants access only to the user at the local physical seat (seat0). Users connected via SSH or other non-seat sessions are not granted access. The ACL is removed automatically when the local user logs out. `RUN{builtin}+="uaccess"` ensures the ACL is applied immediately and synchronously on every plug event, preventing the race condition where permissions could be lost after a replug.
 
 ## Build
 
@@ -87,11 +94,60 @@ Reset state only without writing to keyboard:
 roccat-vulkan-rgb reset --dry-run
 ```
 
+Re-push the current state to the keyboard (e.g. at login or after USB reconnect):
+
+```bash
+roccat-vulkan-rgb apply
+```
+
+`apply` reads the state file and writes the full LED frame to the device without modifying the state. It is the recommended command to restore lighting in autostart scripts. `--dry-run` and `--no-init` are supported.
+
 List available key names:
 
 ```bash
 roccat-vulkan-rgb list-keys
 ```
+
+## Templates
+
+Templates are TOML files that describe a lighting state. They can be edited by hand and shared.
+Colors are `[R, G, B]` arrays in range 0–255. The three sections are all optional, but at least one section with one entry is required. When loaded, sections are applied in order — `[set-all]` first as the base, then `[key]`, then `[index]` — so later sections can override earlier ones.
+
+```toml
+# Roccat Vulkan Pro TKL — RGB template
+# Colors are [R, G, B] values in range 0–255.
+# Sections are all optional; at least one section with one entry is required.
+# Applied in order: [set-all] → [key] → [index]
+
+[set-all]
+ALL = [0, 0, 180]
+
+[key]
+ESC       = [255, 0,  0 ]
+CAPS_LOCK = [255, 80, 0 ]
+SPACE     = [0, 255, 80 ]
+
+[index]
+18 = [0, 0, 0]
+```
+
+Save the current state as a template:
+
+```bash
+roccat-vulkan-rgb save-template my-theme.toml
+```
+
+Load a template and apply it to the keyboard:
+
+```bash
+roccat-vulkan-rgb load-template my-theme.toml
+# Preview without writing to device
+roccat-vulkan-rgb load-template my-theme.toml --dry-run
+# Skip init sequence (keyboard already in host mode)
+roccat-vulkan-rgb load-template my-theme.toml --no-init
+```
+
+See `example-template.toml` in this repository for a ready-to-edit starting point.
 
 ## Notes
 

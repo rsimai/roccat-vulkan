@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use hidapi::{HidApi, HidDevice};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -12,18 +13,32 @@ const PID: u16 = 0x311a;
 const CTRL_INTERFACE: i32 = 1;
 const LED_INTERFACE: i32 = 3;
 const LED_COUNT: usize = 127;
-const STATE_FILE: &str = ".roccat-vulkan-rgb-state.json"; // filename only; resolved relative to $HOME at runtime
+const STATE_FILE: &str = ".roccat-vulkan-rgb-state.toml"; // filename only; resolved relative to $HOME at runtime
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 struct Rgb {
     r: u8,
     g: u8,
     b: u8,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct State {
     leds: Vec<Rgb>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Template {
+    #[serde(rename = "set-all")]
+    set_all: Option<SetAllSection>,
+    key: Option<BTreeMap<String, [u8; 3]>>,
+    index: Option<BTreeMap<String, [u8; 3]>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetAllSection {
+    #[serde(rename = "ALL")]
+    all: [u8; 3],
 }
 
 #[derive(Parser, Debug)]
@@ -81,6 +96,27 @@ enum Command {
     },
     ListKeys,
     Reset {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        no_init: bool,
+    },
+    /// Save current state as a reusable template
+    SaveTemplate {
+        /// Path to the template file to write (e.g. my-theme.toml)
+        path: PathBuf,
+    },
+    /// Load a template, apply it to the device, and update state
+    LoadTemplate {
+        /// Path to the template file to read
+        path: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        no_init: bool,
+    },
+    /// Re-push the current state file to the device (e.g. after login or USB reconnect)
+    Apply {
         #[arg(long)]
         dry_run: bool,
         #[arg(long)]
@@ -177,6 +213,36 @@ fn main() -> Result<()> {
 
             save_state(&state_file, &state)?;
             println!("reset to all black");
+        }
+        Command::SaveTemplate { path } => {
+            save_template(&path, &state)?;
+            println!("template saved to {}", path.display());
+        }
+        Command::LoadTemplate {
+            path,
+            dry_run,
+            no_init,
+        } => {
+            load_template(&path, &mut state)?;
+
+            if dry_run {
+                println!("dry-run: not writing to device");
+            } else {
+                write_full_frame(&state.leds, !no_init)?;
+                println!("device-write=ok");
+            }
+
+            save_state(&state_file, &state)?;
+            println!("template loaded from {}", path.display());
+        }
+        Command::Apply { dry_run, no_init } => {
+            if dry_run {
+                println!("dry-run: not writing to device");
+            } else {
+                write_full_frame(&state.leds, !no_init)?;
+                println!("device-write=ok");
+            }
+            println!("applied state from {}", state_file.display());
         }
     }
 
@@ -440,26 +506,139 @@ fn write_led_map(device: &HidDevice, led_map: &[Rgb]) -> Result<()> {
     Ok(())
 }
 
-fn load_state(path: &Path) -> Result<State> {
-    if !path.exists() {
-        return Ok(State {
-            leds: vec![Rgb::default(); LED_COUNT],
-        });
+fn dominant_color(leds: &[Rgb]) -> Rgb {
+    let mut counts: HashMap<(u8, u8, u8), usize> = HashMap::new();
+    for rgb in leds {
+        *counts.entry((rgb.r, rgb.g, rgb.b)).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|((r, g, b), _)| Rgb { r, g, b })
+        .unwrap_or_default()
+}
+
+fn write_state_as_template(path: &Path, state: &State) -> Result<()> {
+    let dominant = dominant_color(&state.leds);
+    let dom_arr = [dominant.r, dominant.g, dominant.b];
+
+    // Build index → first key name lookup
+    let mut named: HashMap<usize, &str> = HashMap::new();
+    for &(name, idx) in KEY_ALIASES {
+        named.entry(idx).or_insert(name);
     }
 
+    let mut key_map: BTreeMap<String, [u8; 3]> = BTreeMap::new();
+    let mut index_map: BTreeMap<String, [u8; 3]> = BTreeMap::new();
+
+    for (i, rgb) in state.leds.iter().enumerate() {
+        let arr = [rgb.r, rgb.g, rgb.b];
+        if arr != dom_arr {
+            if let Some(&name) = named.get(&i) {
+                key_map.insert(name.to_string(), arr);
+            } else {
+                index_map.insert(i.to_string(), arr);
+            }
+        }
+    }
+
+    // Build TOML manually so arrays stay compact: [R, G, B]
+    let mut out = String::new();
+    out.push_str("# Roccat Vulkan Pro TKL \u{2014} RGB template\n");
+    out.push_str("# Colors are [R, G, B] values in range 0\u{2013}255.\n");
+    out.push_str("# Sections are all optional; at least one section with one entry is required.\n");
+    out.push_str("# Applied in order: [set-all] \u{2192} [key] \u{2192} [index]\n\n");
+
+    out.push_str("[set-all]\n");
+    out.push_str(&format!("ALL = [{}, {}, {}]\n", dom_arr[0], dom_arr[1], dom_arr[2]));
+
+    if !key_map.is_empty() {
+        out.push('\n');
+        out.push_str("[key]\n");
+        for (name, arr) in &key_map {
+            out.push_str(&format!("{} = [{}, {}, {}]\n", name, arr[0], arr[1], arr[2]));
+        }
+    }
+
+    if !index_map.is_empty() {
+        out.push('\n');
+        out.push_str("[index]\n");
+        for (idx_str, arr) in &index_map {
+            out.push_str(&format!("{} = [{}, {}, {}]\n", idx_str, arr[0], arr[1], arr[2]));
+        }
+    }
+
+    fs::write(path, out)
+        .with_context(|| format!("failed to write file {}", path.display()))
+}
+
+fn apply_template(template: &Template, state: &mut State) -> Result<()> {
+    if template.set_all.is_none() && template.key.is_none() && template.index.is_none() {
+        return Err(anyhow!(
+            "template has no sections; add at least one of [set-all], [key], or [index]"
+        ));
+    }
+
+    if let Some(sa) = &template.set_all {
+        let rgb = Rgb { r: sa.all[0], g: sa.all[1], b: sa.all[2] };
+        state.leds.iter_mut().for_each(|led| *led = rgb);
+    }
+
+    if let Some(keys) = &template.key {
+        for (name, arr) in keys {
+            let normalized = normalize_key_name(name);
+            let idx = KEY_ALIASES
+                .iter()
+                .find(|&&(alias, _)| alias == normalized)
+                .map(|&(_, idx)| idx)
+                .ok_or_else(|| anyhow!("unknown key '{}' in [key] section", name))?;
+            state.leds[idx] = Rgb { r: arr[0], g: arr[1], b: arr[2] };
+        }
+    }
+
+    if let Some(indices) = &template.index {
+        for (key_str, arr) in indices {
+            let idx: usize = key_str
+                .parse()
+                .with_context(|| format!("invalid index '{}' in [index] section", key_str))?;
+            if idx >= LED_COUNT {
+                return Err(anyhow!(
+                    "index {} out of range in [index] section (max {})",
+                    idx,
+                    LED_COUNT - 1
+                ));
+            }
+            state.leds[idx] = Rgb { r: arr[0], g: arr[1], b: arr[2] };
+        }
+    }
+
+    Ok(())
+}
+
+fn save_template(path: &Path, state: &State) -> Result<()> {
+    write_state_as_template(path, state)
+}
+
+fn load_template(path: &Path, state: &mut State) -> Result<()> {
     let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read state file {}", path.display()))?;
-    let mut state: State = serde_json::from_str(&raw)
-        .with_context(|| format!("failed to parse state file {}", path.display()))?;
+        .with_context(|| format!("failed to read template file {}", path.display()))?;
+    let template: Template = toml::from_str(&raw)
+        .with_context(|| format!("failed to parse template file {}", path.display()))?;
+    apply_template(&template, state)
+}
 
-    if state.leds.len() != LED_COUNT {
-        state.leds.resize(LED_COUNT, Rgb::default());
+fn load_state(path: &Path) -> Result<State> {
+    let mut state = State { leds: vec![Rgb::default(); LED_COUNT] };
+    if path.exists() {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read state file {}", path.display()))?;
+        let template: Template = toml::from_str(&raw)
+            .with_context(|| format!("failed to parse state file {}", path.display()))?;
+        apply_template(&template, &mut state)?;
     }
-
     Ok(state)
 }
 
 fn save_state(path: &Path, state: &State) -> Result<()> {
-    let data = serde_json::to_string_pretty(state).context("failed to serialize state")?;
-    fs::write(path, data).with_context(|| format!("failed to write state file {}", path.display()))
+    write_state_as_template(path, state)
 }

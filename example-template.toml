@@ -1,0 +1,22 @@
+# Roccat Vulkan Pro TKL — RGB template
+# Colors are [R, G, B] values in range 0–255.
+# Sections are all optional; at least one section with one entry is required.
+# Applied in order: [set-all] → [key] → [index]
+
+[set-all]
+ALL = [0, 0, 180]
+
+[key]
+ESC       = [255, 0,   0  ]
+F1        = [255, 80,  0  ]
+F2        = [255, 80,  0  ]
+F3        = [255, 80,  0  ]
+F4        = [255, 80,  0  ]
+CAPS_LOCK = [255, 120, 0  ]
+SPACE     = [0,   255, 80 ]
+ENTER     = [0,   255, 80 ]
+
+[index]
+# 18 and 19 have no key name in the alias table — addressed by raw index
+18 = [0, 0, 0]
+19 = [0, 0, 0]
