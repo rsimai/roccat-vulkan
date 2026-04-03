@@ -9,6 +9,7 @@ Source1:        vendor.tar.xz
 
 BuildRequires:  cargo
 BuildRequires:  rust
+BuildRequires:  pkgconfig(libudev)
 
 %description
 roccat-vulkan-rgb is a small command-line tool for writing RGB values to a
