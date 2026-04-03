@@ -19,6 +19,8 @@ file and writes full frames directly to the keyboard's HID interfaces.
 Features:
   - Set individual key colors by name or index
   - Set all keys in a single frame write
+  - Save and load TOML lighting templates (human-readable, hand-editable)
+  - Apply saved state to the device (useful at login or after USB reconnect)
   - Dry-run mode for testing without touching the hardware
   - udev rule for access without root
 
@@ -44,11 +46,10 @@ install -Dm 0644 99-roccat-vulkan-pro-tkl.rules \
 
 %post
 udevadm control --reload-rules || :
-udevadm trigger --action=add /dev/hidraw* 2>/dev/null || :
 
 %files
 %license LICENSE
-%doc README.md
+%doc README.md example-template.toml
 %{_bindir}/%{name}
 /usr/lib/udev/rules.d/99-roccat-vulkan-pro-tkl.rules
 
