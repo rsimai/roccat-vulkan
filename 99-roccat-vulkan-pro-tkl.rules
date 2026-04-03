@@ -1,0 +1,18 @@
+# udev rules for ROCCAT Vulkan Pro TKL (VID 1e7d / PID 311a)
+#
+# Uses the systemd "uaccess" tag so that read/write access to the keyboard's
+# HID device nodes is granted dynamically — only to the user currently logged
+# in at the local physical seat (seat0).  Users connected via SSH or other
+# non-seat sessions are NOT granted access.  The ACL is removed automatically
+# when the local user logs out.
+#
+# Requires systemd (standard on all major distros).  No group membership or
+# password is needed.
+#
+# Install:
+#   sudo cp 99-roccat-vulkan-pro-tkl.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger --action=add /dev/hidraw*
+#   (or simply unplug and replug the keyboard)
+#
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1e7d", ATTRS{idProduct}=="311a", TAG+="uaccess"
