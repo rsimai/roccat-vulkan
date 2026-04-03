@@ -40,12 +40,20 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     Get {
-        #[arg(long)]
-        key: String,
+        /// Key name (e.g. ESC, A, F5, CAPS_LOCK); see list-keys
+        #[arg(long, group = "key_spec")]
+        key: Option<String>,
+        /// Raw LED matrix index (0..126)
+        #[arg(long, group = "key_spec")]
+        index: Option<usize>,
     },
     Set {
-        #[arg(long)]
-        key: String,
+        /// Key name (e.g. ESC, A, F5, CAPS_LOCK); see list-keys
+        #[arg(long, group = "key_spec")]
+        key: Option<String>,
+        /// Raw LED matrix index (0..126)
+        #[arg(long, group = "key_spec")]
+        index: Option<usize>,
         #[arg(long)]
         r: u8,
         #[arg(long)]
@@ -72,7 +80,12 @@ enum Command {
         no_init: bool,
     },
     ListKeys,
-    Reset,
+    Reset {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        no_init: bool,
+    },
 }
 
 fn default_state_file() -> PathBuf {
@@ -88,9 +101,8 @@ fn main() -> Result<()> {
     let mut state = load_state(&state_file)?;
 
     match cli.command {
-        Command::Get { key } => {
-            let key = parse_key_spec(&key)?;
-            validate_key(key)?;
+        Command::Get { key, index } => {
+            let key = resolve_key_spec(key, index)?;
 
             let c = state.leds[key];
             println!("key={} rgb=({}, {}, {})", key, c.r, c.g, c.b);
@@ -98,14 +110,14 @@ fn main() -> Result<()> {
         }
         Command::Set {
             key,
+            index,
             r,
             g,
             b,
             dry_run,
             no_init,
         } => {
-            let key = parse_key_spec(&key)?;
-            validate_key(key)?;
+            let key = resolve_key_spec(key, index)?;
 
             let old = state.leds[key];
             let new = Rgb { r, g, b };
@@ -151,16 +163,44 @@ fn main() -> Result<()> {
                 println!("{:<18} {}", name, index);
             }
         }
-        Command::Reset => {
+        Command::Reset { dry_run, no_init } => {
             state = State {
                 leds: vec![Rgb::default(); LED_COUNT],
             };
+
+            if dry_run {
+                println!("dry-run: not writing to device");
+            } else {
+                write_full_frame(&state.leds, !no_init)?;
+                println!("device-write=ok");
+            }
+
             save_state(&state_file, &state)?;
-            println!("state reset to all black");
+            println!("reset to all black");
         }
     }
 
     Ok(())
+}
+
+fn resolve_key_spec(key: Option<String>, index: Option<usize>) -> Result<usize> {
+    if let Some(name) = key {
+        let normalized = normalize_key_name(&name);
+        for &(alias, idx) in KEY_ALIASES {
+            if alias == normalized {
+                return Ok(idx);
+            }
+        }
+        return Err(anyhow!(
+            "unknown key name '{}'; run 'list-keys' to see all valid names",
+            name
+        ));
+    }
+    if let Some(idx) = index {
+        validate_key(idx)?;
+        return Ok(idx);
+    }
+    Err(anyhow!("specify either --key <name> or --index <number>"))
 }
 
 fn validate_key(key: usize) -> Result<()> {
@@ -168,24 +208,6 @@ fn validate_key(key: usize) -> Result<()> {
         return Err(anyhow!("key index out of range: {} (expected 0..{})", key, LED_COUNT - 1));
     }
     Ok(())
-}
-
-fn parse_key_spec(input: &str) -> Result<usize> {
-    if let Ok(index) = input.parse::<usize>() {
-        return Ok(index);
-    }
-
-    let normalized = normalize_key_name(input);
-    for &(name, index) in KEY_ALIASES {
-        if name == normalized {
-            return Ok(index);
-        }
-    }
-
-    Err(anyhow!(
-        "unknown key '{}'; use numeric index 0..126 or run 'list-keys'",
-        input
-    ))
 }
 
 fn normalize_key_name(name: &str) -> String {

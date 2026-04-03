@@ -42,17 +42,19 @@ and copy the resulting target/release/roccat-vulkan-rgb to your ~/bin or whateve
 Read key color from tracked state:
 
 ```bash
-roccat-vulkan-rgb get --key 10
-# or by key name
+# by key name
 roccat-vulkan-rgb get --key F5
+# by raw LED matrix index
+roccat-vulkan-rgb get --index 10
 ```
 
 Set key color and write to keyboard:
 
 ```bash
-roccat-vulkan-rgb set --key 10 --r 255 --g 40 --b 0
-# or by key name
+# by key name
 roccat-vulkan-rgb set --key CAPS_LOCK --r 0 --g 180 --b 255
+# by raw LED matrix index
+roccat-vulkan-rgb set --index 10 --r 255 --g 40 --b 0
 ```
 
 Set all keys in one write (fast path):
@@ -70,13 +72,19 @@ roccat-vulkan-rgb set-all --r 0 --g 0 --b 255 --no-init
 Dry run without writing to keyboard:
 
 ```bash
-roccat-vulkan-rgb set --key 10 --r 255 --g 40 --b 0 --dry-run
+roccat-vulkan-rgb set --key ENTER --r 255 --g 40 --b 0 --dry-run
 ```
 
-Reset tracked state to black:
+Reset all keys to black and write to keyboard:
 
 ```bash
 roccat-vulkan-rgb reset
+```
+
+Reset state only without writing to keyboard:
+
+```bash
+roccat-vulkan-rgb reset --dry-run
 ```
 
 List available key names:
@@ -87,9 +95,9 @@ roccat-vulkan-rgb list-keys
 
 ## Notes
 
-- Key accepts a raw LED index (0..126) or a key name (for example `ESC`, `A`, `F5`, `CAPS_LOCK`).
-- Named keys are mapped to the Vulkan Pro TKL ISO matrix indices used by Eruption device tables.
+- Use `--key <name>` to address a key by name (e.g. `ESC`, `A`, `F5`, `CAPS_LOCK`, `1`, `2`, …) or `--index <n>` to address a key by its raw LED matrix index (0..126). The two options are mutually exclusive.
+- Named keys are mapped to the Vulkan Pro TKL ISO matrix indices used by Eruption device tables; run `list-keys` to see all names and their indices.
 - The tool communicates with the keyboard over two HID interfaces (USB `VID 1e7d` / `PID 311a`): the LED interface for color frames and the control interface for the host-mode init sequence.
-- On `set`, the control-interface init sequence is sent first unless `--no-init` is given.
+- On `set`, `set-all`, and `reset`, the control-interface init sequence is sent first unless `--no-init` is given.
 - `set-all` is much faster than calling `set` many times because it updates all keys with one frame write.
 - For speed-sensitive loops, use the compiled binary directly instead of `cargo run`.
