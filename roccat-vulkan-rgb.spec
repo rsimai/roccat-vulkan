@@ -1,5 +1,5 @@
 Name:           roccat-vulkan-rgb
-Version:        0.1.0
+Version:        0.2.0
 Release:        0
 Summary:        RGB control tool for the ROCCAT Vulkan Pro TKL keyboard
 License:        GPL-3.0-or-later
