@@ -151,6 +151,8 @@ See `example-template.toml` in this repository for a ready-to-edit starting poin
 
 ## GUI Editor
 
+![roccat-vulkan-rgb editor](editor.png)
+
 The editor provides a graphical way to build and save templates without hand-editing TOML.
 
 ```bash
@@ -159,7 +161,7 @@ roccat-vulkan-rgb editor
 
 ### What it does
 
-- **Learn mode** — press "▶ Learn", tap the keys you want to colour, then press "⏹ Stop Learning". The selected keys are listed in the panel.
+- **Learn mode** — press "▶ Learn", tap the keys you want to colour, the keyboard is unavailable during learning for text input. Press "⏹ Stop Learning" makes it become available again. The selected keys are listed in the panel. You need to authenticate as root for this.
 - **Background colour** — tick "Background (set-all)" and pick a colour to set all LEDs to a base colour. The entire keyboard is flooded with that colour before per-key overrides are applied.
 - **Per-key colour** — after stopping learn mode, use the colour picker to assign a colour to the keys you just selected. Start another learn session to pick a different group and colour. Each round accumulates into the same template; individual keys can be removed with the ✕ button.
 - **Live preview** — colour changes are pushed to the keyboard immediately so you can see the result without saving.
