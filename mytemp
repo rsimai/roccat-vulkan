@@ -1,7 +1,0 @@
-# Roccat Vulkan Pro TKL — RGB template
-# Colors are [R, G, B] values in range 0–255.
-# Sections are all optional; at least one section with one entry is required.
-# Applied in order: [set-all] → [key] → [index]
-
-[set-all]
-ALL = [50, 100, 200]

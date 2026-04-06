@@ -149,6 +149,60 @@ roccat-vulkan-rgb load-template my-theme.toml --no-init
 
 See `example-template.toml` in this repository for a ready-to-edit starting point.
 
+## GUI Editor
+
+The editor provides a graphical way to build and save templates without hand-editing TOML.
+
+```bash
+roccat-vulkan-rgb editor
+```
+
+### What it does
+
+- **Learn mode** — press "▶ Learn", tap the keys you want to colour, then press "⏹ Stop Learning". The selected keys are listed in the panel.
+- **Background colour** — tick "Background (set-all)" and pick a colour to set all LEDs to a base colour. The entire keyboard is flooded with that colour before per-key overrides are applied.
+- **Per-key colour** — after stopping learn mode, use the colour picker to assign a colour to the keys you just selected. Start another learn session to pick a different group and colour. Each round accumulates into the same template; individual keys can be removed with the ✕ button.
+- **Live preview** — colour changes are pushed to the keyboard immediately so you can see the result without saving.
+- **Write Template** — saves all assignments to the file shown in the path field. Defaults to the standard state file (`~/.roccat-vulkan-rgb-state.toml`); change the path field to target a different file. The write is refused if the target file already exists but is not a recognised template, to avoid overwriting unrelated files.
+
+The editor reads the state file on startup to pre-populate the background colour and any existing per-key assignments, so you always continue from the current state.
+
+### Learn mode and permissions
+
+Reading raw key events requires access to `/dev/input/event*`. If your user is not in the `input` group the editor automatically falls back to running a privileged helper via `pkexec` (the standard polkit privilege-escalation tool). A password prompt appears the first time.
+
+To avoid repeated prompts, install the bundled polkit rule so the credential is cached for the session timeout (~5 minutes):
+
+```bash
+sudo cp 50-roccat-vulkan-rgb.rules /etc/polkit-1/rules.d/
+```
+
+No reload is needed — polkit watches the directory automatically. The rule matches only the `--evdev-helper` invocation of this binary and is restricted to the physically logged-in user.
+
+Alternatively, adding your user to the `input` group (and logging out/in once) eliminates the prompt entirely:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+
+
+A ready-made `.desktop` file (`roccat-vulkan-rgb.desktop`) is included. It calls `roccat-vulkan-rgb apply` automatically when your desktop session starts, so the keyboard lighting is restored after every login or USB reconnect.
+
+Place it in your user autostart directory:
+
+```bash
+cp roccat-vulkan-rgb.desktop ~/.config/autostart/
+```
+
+`~/.config/autostart/` is the XDG standard location supported by GNOME, KDE Plasma, XFCE, and most other desktop environments. The binary must be on your `$PATH` (e.g. in `~/bin` or `/usr/local/bin`).
+
+For non-desktop / TTY environments you can instead add the equivalent call to `~/.bash_profile` or `~/.profile`:
+
+```bash
+roccat-vulkan-rgb apply
+```
+
 ## Notes
 
 - Use `--key <name>` to address a key by name (e.g. `ESC`, `A`, `F5`, `CAPS_LOCK`, `1`, `2`, …) or `--index <n>` to address a key by its raw LED matrix index (0..126). The two options are mutually exclusive.

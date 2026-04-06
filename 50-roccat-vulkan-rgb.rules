@@ -1,0 +1,26 @@
+// Polkit rule for roccat-vulkan-rgb — evdev learn-mode helper
+//
+// When the editor's "Learn" button is clicked, the application runs itself as
+// root via `pkexec` to read raw keyboard events from /dev/input/event*.
+// By default polkit asks for the admin password on every invocation.
+//
+// This rule changes that to AUTH_ADMIN_KEEP, which caches the credentials for
+// the polkit session timeout (typically 5 minutes) so the user is not prompted
+// again if they stop and restart learn mode within that window.
+//
+// The rule matches on the unique --evdev-helper argument rather than a hard-
+// coded binary path, so it works regardless of where the binary is installed.
+//
+// Install:
+//   sudo cp 50-roccat-vulkan-rgb.rules /etc/polkit-1/rules.d/
+//   # No reload needed — polkit watches the directory automatically.
+
+polkit.addRule(function(action, subject) {
+    if (action.id === "org.freedesktop.policykit.exec" &&
+        action.lookup("command_line").indexOf("--evdev-helper") !== -1 &&
+        subject.local &&
+        subject.active)
+    {
+        return polkit.Result.AUTH_ADMIN_KEEP;
+    }
+});

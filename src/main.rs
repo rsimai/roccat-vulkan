@@ -1,3 +1,5 @@
+mod editor;
+
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use hidapi::{HidApi, HidDevice};
@@ -12,19 +14,19 @@ const VID: u16 = 0x1e7d;
 const PID: u16 = 0x311a;
 const CTRL_INTERFACE: i32 = 1;
 const LED_INTERFACE: i32 = 3;
-const LED_COUNT: usize = 127;
+pub const LED_COUNT: usize = 127;
 const STATE_FILE: &str = ".roccat-vulkan-rgb-state.toml"; // filename only; resolved relative to $HOME at runtime
 
 #[derive(Debug, Clone, Copy, Default)]
-struct Rgb {
-    r: u8,
-    g: u8,
-    b: u8,
+pub struct Rgb {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 #[derive(Debug)]
-struct State {
-    leds: Vec<Rgb>,
+pub struct State {
+    pub leds: Vec<Rgb>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +124,8 @@ enum Command {
         #[arg(long)]
         no_init: bool,
     },
+    /// Open the key-selection editor GUI
+    Editor,
 }
 
 fn default_state_file() -> PathBuf {
@@ -132,6 +136,14 @@ fn default_state_file() -> PathBuf {
 }
 
 fn main() -> Result<()> {
+    // Internal helper mode: invoked as `pkexec <self> --evdev-helper` by the
+    // editor's learn-mode feature.  Must be handled before clap parses argv so
+    // that the extra argument doesn't confuse clap's subcommand parser.
+    if std::env::args().nth(1).as_deref() == Some("--evdev-helper") {
+        editor::evdev_helper();
+        return Ok(());
+    }
+
     let cli = Cli::parse();
     let state_file = cli.state_file.unwrap_or_else(default_state_file);
     let mut state = load_state(&state_file)?;
@@ -244,6 +256,9 @@ fn main() -> Result<()> {
             }
             println!("applied state from {}", state_file.display());
         }
+        Command::Editor => {
+            editor::run(&state_file).map_err(|e| anyhow::anyhow!("{e}"))?;
+        }
     }
 
     Ok(())
@@ -280,7 +295,7 @@ fn normalize_key_name(name: &str) -> String {
     name.trim().to_ascii_uppercase().replace('-', "_")
 }
 
-const KEY_ALIASES: &[(&str, usize)] = &[
+pub const KEY_ALIASES: &[(&str, usize)] = &[
     // ISO Vulkan Pro TKL matrix indices as used by Eruption topology tables.
     ("LEFT_SHIFT", 0),
     ("LEFT_CTRL", 1),
@@ -453,7 +468,7 @@ fn open_led_device(api: &HidApi) -> Result<HidDevice> {
         .context("failed to open LED HID device (permissions?)")
 }
 
-fn write_full_frame(led_map: &[Rgb], initialize: bool) -> Result<()> {
+pub fn write_full_frame(led_map: &[Rgb], initialize: bool) -> Result<()> {
     let api = HidApi::new().context("failed to initialize hidapi")?;
     let led = open_led_device(&api)?;
 
@@ -627,7 +642,7 @@ fn load_template(path: &Path, state: &mut State) -> Result<()> {
     apply_template(&template, state)
 }
 
-fn load_state(path: &Path) -> Result<State> {
+pub fn load_state(path: &Path) -> Result<State> {
     let mut state = State { leds: vec![Rgb::default(); LED_COUNT] };
     if path.exists() {
         let raw = fs::read_to_string(path)

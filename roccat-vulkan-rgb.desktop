@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ROCCAT Vulkan RGB restore
+Comment=Re-apply keyboard RGB state at login
+Exec=roccat-vulkan-rgb apply
+Terminal=false
+X-GNOME-Autostart-enabled=true

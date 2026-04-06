@@ -1,5 +1,5 @@
 Name:           roccat-vulkan-rgb
-Version:        0.2.0
+Version:        0.3.0
 Release:        0
 Summary:        RGB control tool for the ROCCAT Vulkan Pro TKL keyboard
 License:        GPL-3.0-or-later
@@ -49,7 +49,7 @@ udevadm control --reload-rules || :
 
 %files
 %license LICENSE
-%doc README.md example-template.toml
+%doc README.md example-template.toml 50-roccat-vulkan-rgb.rules
 %{_bindir}/%{name}
 /usr/lib/udev/rules.d/99-roccat-vulkan-pro-tkl.rules
 
