@@ -79,7 +79,6 @@ enum Command {
         b: u8,
         #[arg(long)]
         dry_run: bool,
-
         #[arg(long)]
         no_init: bool,
     },
@@ -116,9 +115,22 @@ enum Command {
         dry_run: bool,
         #[arg(long)]
         no_init: bool,
+        /// Optional brightness multiplier in percent applied after loading (≥ 0; e.g. 50 for half, 200 for double)
+        #[arg(long)]
+        intensity: Option<f32>,
     },
     /// Re-push the current state file to the device (e.g. after login or USB reconnect)
     Apply {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        no_init: bool,
+    },
+    /// Apply visual effects to the current state and push to the device without modifying the state file
+    Effect {
+        /// Scale all LED brightness by a percentage (≥ 0; 0 = off, 100 = unchanged, >100 = brighter, clamped at 255)
+        #[arg(long)]
+        intensity: Option<f32>,
         #[arg(long)]
         dry_run: bool,
         #[arg(long)]
@@ -234,17 +246,33 @@ fn main() -> Result<()> {
             path,
             dry_run,
             no_init,
+            intensity,
         } => {
             load_template(&path, &mut state)?;
+
+            // Save original (unscaled) colours so the state file is a faithful
+            // copy of the template regardless of any intensity modifier.
+            save_state(&state_file, &state)?;
+
+            let leds_to_send = if let Some(pct) = intensity {
+                if pct < 0.0 {
+                    return Err(anyhow!("--intensity must be >= 0 (got {})", pct));
+                }
+                let mut scaled = state.leds.clone();
+                apply_intensity(&mut scaled, pct);
+                println!("intensity={}%", pct);
+                scaled
+            } else {
+                state.leds.clone()
+            };
 
             if dry_run {
                 println!("dry-run: not writing to device");
             } else {
-                write_full_frame(&state.leds, !no_init)?;
+                write_full_frame(&leds_to_send, !no_init)?;
                 println!("device-write=ok");
             }
 
-            save_state(&state_file, &state)?;
             println!("template loaded from {}", path.display());
         }
         Command::Apply { dry_run, no_init } => {
@@ -255,6 +283,30 @@ fn main() -> Result<()> {
                 println!("device-write=ok");
             }
             println!("applied state from {}", state_file.display());
+        }
+        Command::Effect {
+            intensity,
+            dry_run,
+            no_init,
+        } => {
+            if intensity.is_none() {
+                return Err(anyhow!("effect: specify at least one effect option (e.g. --intensity <percent>)"));
+            }
+            let mut leds = state.leds.clone();
+            if let Some(pct) = intensity {
+                if pct < 0.0 {
+                    return Err(anyhow!("--intensity must be >= 0 (got {})", pct));
+                }
+                apply_intensity(&mut leds, pct);
+                println!("intensity={}%", pct);
+            }
+            // State file is intentionally not updated so original colours are preserved.
+            if dry_run {
+                println!("dry-run: not writing to device");
+            } else {
+                write_full_frame(&leds, !no_init)?;
+                println!("device-write=ok");
+            }
         }
         Command::Editor => {
             editor::run(&state_file).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -656,4 +708,14 @@ pub fn load_state(path: &Path) -> Result<State> {
 
 fn save_state(path: &Path, state: &State) -> Result<()> {
     write_state_as_template(path, state)
+}
+
+/// Scale each LED's RGB values by `percent / 100`, clamping to 0–255.
+fn apply_intensity(leds: &mut Vec<Rgb>, percent: f32) {
+    let factor = percent / 100.0;
+    for led in leds.iter_mut() {
+        led.r = ((led.r as f32 * factor).round() as u32).min(255) as u8;
+        led.g = ((led.g as f32 * factor).round() as u32).min(255) as u8;
+        led.b = ((led.b as f32 * factor).round() as u32).min(255) as u8;
+    }
 }

@@ -145,9 +145,30 @@ roccat-vulkan-rgb load-template my-theme.toml
 roccat-vulkan-rgb load-template my-theme.toml --dry-run
 # Skip init sequence (keyboard already in host mode)
 roccat-vulkan-rgb load-template my-theme.toml --no-init
+# Load at reduced brightness (template colours are saved unscaled)
+roccat-vulkan-rgb load-template my-theme.toml --intensity 60
 ```
 
 See `example-template.toml` in this repository for a ready-to-edit starting point.
+
+## Effects
+
+Effects read the current saved state, transform it in memory, and push the result to the keyboard. The state file is **not** modified, so the original colours are always preserved for the next `apply` or `effect` call.
+
+### Intensity
+
+Scale all LED brightness by a percentage. `0` turns everything off, `100` is unchanged, values above `100` amplify (clamped at 255):
+
+```bash
+# Half brightness
+roccat-vulkan-rgb effect --intensity 50
+# Full off
+roccat-vulkan-rgb effect --intensity 0
+# 150 % (boosted, clamped per channel)
+roccat-vulkan-rgb effect --intensity 150
+# Preview without writing to device
+roccat-vulkan-rgb effect --intensity 75 --dry-run
+```
 
 ## GUI Editor
 
