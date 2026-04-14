@@ -1,5 +1,5 @@
 Name:           roccat-vulkan-rgb
-Version:        0.3.0
+Version:        0.4.0
 Release:        0
 Summary:        RGB control tool for the ROCCAT Vulkan Pro TKL keyboard
 License:        GPL-3.0-or-later
@@ -54,3 +54,8 @@ udevadm control --reload-rules || :
 /usr/lib/udev/rules.d/99-roccat-vulkan-pro-tkl.rules
 
 %changelog
+* Mon Apr 14 2026 Robert Simai <robert@simai.net> - 0.4.0
+- Add effect subcommand with --intensity option to scale LED brightness
+  without modifying the saved state file
+- Add --intensity option to load-template; template colours are saved
+  unscaled, only the frame sent to the device is scaled
